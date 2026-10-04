@@ -49,6 +49,8 @@ class FoodOrderApp:
 
         self.cart = {}
         self.cart_names = []
+        self.search_var = tk.StringVar()
+        self.sort_var = tk.StringVar(value="Name (A-Z)")
 
         init_db()
         self.build_ui()
@@ -138,6 +140,24 @@ class FoodOrderApp:
         left_panel = tk.LabelFrame(main_frame, text="Menu", font=("Arial", 13, "bold"), bg="#fffaf0", fg="#7c2d12", padx=15, pady=15)
         left_panel.pack(side="left", fill="both", expand=True, padx=(0, 20))
 
+        menu_controls = tk.Frame(left_panel, bg="#fffaf0")
+        menu_controls.pack(fill="x", pady=(0, 8))
+        tk.Label(menu_controls, text="Search:", bg="#fffaf0", fg="#374151").pack(side="left")
+        search_entry = ttk.Entry(menu_controls, textvariable=self.search_var)
+        search_entry.pack(side="left", fill="x", expand=True, padx=(6, 12))
+        search_entry.bind("<KeyRelease>", lambda _event: self.refresh_menu())
+
+        tk.Label(menu_controls, text="Sort:", bg="#fffaf0", fg="#374151").pack(side="left")
+        sort_menu = ttk.Combobox(
+            menu_controls,
+            textvariable=self.sort_var,
+            values=["Name (A-Z)", "Price (Low-High)", "Price (High-Low)"],
+            state="readonly",
+            width=18,
+        )
+        sort_menu.pack(side="left", padx=(6, 0))
+        sort_menu.bind("<<ComboboxSelected>>", lambda _event: self.refresh_menu())
+
         menu_canvas = tk.Canvas(left_panel, bg="#fffaf0", highlightthickness=0, width=560)
         menu_scroll = ttk.Scrollbar(left_panel, orient="vertical", command=menu_canvas.yview)
         menu_container = tk.Frame(menu_canvas, bg="#fffaf0")
@@ -147,38 +167,11 @@ class FoodOrderApp:
         menu_scroll.pack(side="right", fill="y")
         menu_canvas.create_window((0, 0), window=menu_container, anchor="nw")
 
-        menu_title = tk.Label(menu_container, text=f"Menu Items ({len(MENU_ITEMS)} choices)", font=("Arial", 12, "bold"), bg="#fffaf0", fg="#7c2d12")
-        menu_title.pack(anchor="w", pady=(0, 10))
-
-        for item in MENU_ITEMS:
-            card = tk.Frame(menu_container, bg="#fff", bd=1, relief="ridge", padx=18, pady=15, height=150)
-            card.pack(fill="x", pady=8)
-            card.pack_propagate(False)
-
-            item_name = tk.Label(card, text=item["name"], font=("Arial", 12, "bold"), bg="#fff", fg="#111827")
-            item_name.pack(anchor="w")
-
-            item_price = tk.Label(card, text=f"₹{item['price']}", font=("Arial", 11, "bold"), bg="#fff", fg="#047857")
-            item_price.pack(anchor="w", pady=(2, 0))
-
-            tag_label = tk.Label(card, text="Popular" if item["price"] >= 150 else "Fresh", font=("Arial", 8, "bold"), bg="#fef3c7", fg="#92400e")
-            tag_label.pack(anchor="w", pady=(6, 0))
-
-            add_btn = tk.Button(
-                card,
-                text="Add to Cart",
-                command=lambda menu_item=item: self.add_to_cart(menu_item),
-                bg="#f97316",
-                fg="white",
-                font=("Arial", 9, "bold"),
-                relief="flat",
-                padx=14,
-                pady=7,
-            )
-            add_btn.pack(side="bottom", anchor="e", pady=(10, 0))
-
-        menu_container.update_idletasks()
-        menu_canvas.config(scrollregion=menu_canvas.bbox("all"))
+        self.menu_canvas = menu_canvas
+        self.menu_container = menu_container
+        self.menu_title = tk.Label(menu_container, font=("Arial", 12, "bold"), bg="#fffaf0", fg="#7c2d12")
+        self.menu_title.pack(anchor="w", pady=(0, 10))
+        self.refresh_menu()
 
         right_panel = tk.LabelFrame(main_frame, text="Your Order", font=("Arial", 13, "bold"), bg="#fffaf0", fg="#7c2d12", padx=15, pady=15)
         right_panel.pack(side="right", fill="y")
@@ -221,6 +214,63 @@ class FoodOrderApp:
 
         for review in REVIEWS:
             reviews_box.insert(tk.END, review)
+
+    def refresh_menu(self):
+        query = self.search_var.get().strip().casefold()
+        matching_items = [
+            item for item in MENU_ITEMS
+            if query in item["name"].casefold()
+        ]
+
+        if self.sort_var.get() == "Price (Low-High)":
+            matching_items.sort(key=lambda item: (item["price"], item["name"].casefold()))
+        elif self.sort_var.get() == "Price (High-Low)":
+            matching_items.sort(key=lambda item: (-item["price"], item["name"].casefold()))
+        else:
+            matching_items.sort(key=lambda item: item["name"].casefold())
+
+        for child in self.menu_container.winfo_children():
+            if child is not self.menu_title:
+                child.destroy()
+
+        self.menu_title.config(text=f"Menu Items ({len(matching_items)} of {len(MENU_ITEMS)} choices)")
+        if not matching_items:
+            tk.Label(
+                self.menu_container,
+                text="No menu items match your search.",
+                font=("Arial", 10),
+                bg="#fffaf0",
+                fg="#6b7280",
+            ).pack(anchor="w", pady=12)
+        else:
+            for item in matching_items:
+                card = tk.Frame(self.menu_container, bg="#fff", bd=1, relief="ridge", padx=18, pady=15, height=150)
+                card.pack(fill="x", pady=8)
+                card.pack_propagate(False)
+
+                tk.Label(card, text=item["name"], font=("Arial", 12, "bold"), bg="#fff", fg="#111827").pack(anchor="w")
+                tk.Label(card, text=f"₹{item['price']}", font=("Arial", 11, "bold"), bg="#fff", fg="#047857").pack(anchor="w", pady=(2, 0))
+                tk.Label(
+                    card,
+                    text="Popular" if item["price"] >= 150 else "Fresh",
+                    font=("Arial", 8, "bold"),
+                    bg="#fef3c7",
+                    fg="#92400e",
+                ).pack(anchor="w", pady=(6, 0))
+                tk.Button(
+                    card,
+                    text="Add to Cart",
+                    command=lambda menu_item=item: self.add_to_cart(menu_item),
+                    bg="#f97316",
+                    fg="white",
+                    font=("Arial", 9, "bold"),
+                    relief="flat",
+                    padx=14,
+                    pady=7,
+                ).pack(side="bottom", anchor="e", pady=(10, 0))
+
+        self.menu_container.update_idletasks()
+        self.menu_canvas.configure(scrollregion=self.menu_canvas.bbox("all"))
 
     def add_combo_to_cart(self, combo):
         combo_name = combo["name"]
